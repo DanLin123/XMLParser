@@ -13,16 +13,24 @@ object main extends App {
   val wsclient = ning.NingWSClient()
   implicit val connection: Neo4jConnection = Neo4jREST()(wsclient)
 
-  val filenames = args
- // val filenames = Seq("""/Users/mary/Downloads/worleyparsons_20121209/11-004-Ingr.xml""")
+  val fileType = args(0)
+  val filenames = args.drop(1)
   val xmlFiles = filenames.map (f => (f, XML.load(f)))
-  val parser = new Parser()
+
+  val parser = fileType match {
+    case "mimosa" => new MimosaParser
+    case _ => new DexpiParser
+  }
+  val db = fileType match {
+    case "mimosa" => new MimosaDb
+    case _ => new DexpiDb
+  }
 
   val xmls =  xmlFiles.map{f =>
     val x = f._2
     val ids = parser.ids(x)
     val equipments: Seq[Equipment] = parser.equipments(x)
-    val instruments: Seq[Instrument] =  parser.instruments(x)
+    val instruments: Seq[Instrument] =  parser.instruments(x, fileType)
     val pipingNetworkSegment: Seq[PipingNetworkSegment] = parser.pipingNetworkSegment(x)
     val connections = parser.connections(x)
     val connectorSymbols =  parser.pipeConnectorSymbol(x)
@@ -45,11 +53,15 @@ object main extends App {
 
 
   // query
-  val sensors = xmls.map{x =>
-    x.instruments.filter(_.componentName.startsWith("DCS - Main Panel")).map { s =>
+  val sensors = xmls.map{x => {
+    val sensorInstruments = fileType match {
+      case "mimosa" => x.instruments.filter(_.componentName.startsWith("DCS - Main Panel"))
+      case _ => x.instruments
+    }
+    sensorInstruments.map { s =>
       (s.tagName, db.equipmentForInstrument(s.id), x.fileName)
     }
-  }.flatten
+  }}.flatten
   csv.writeSensor(sensors, "./sensors.csv")
 
   val equipments = xmls.map(x =>
@@ -58,7 +70,7 @@ object main extends App {
 
   csv.writeEquipment(equipments, "./equipments.csv")
 
-  db.clean
+  //db.clean
 
   wsclient.close()
 }

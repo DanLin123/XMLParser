@@ -4,7 +4,7 @@
 
 import org.anormcypher._
 
-object db {
+trait db {
   implicit val ec = scala.concurrent.ExecutionContext.global
 
   def insertId(id: String)(implicit connection: Neo4jConnection): Boolean = {
@@ -25,15 +25,13 @@ object db {
     })
   }
 
-  def insertInstrument(instru: Instrument)(implicit connection: Neo4jConnection): Option[Boolean] = {
+  def insertInstrument(instru: Instrument)(implicit connection: Neo4jConnection): Option[Boolean]
+
+  def insertInstrumentWithLabel(instru: Instrument, label: String)(implicit connection: Neo4jConnection): Option[Boolean] = {
     val name = instru.tagName
     val id = instru.id
     val compClass = instru.componentClass
     val compName = instru.componentName
-    val label = instru.componentName match {
-      case name if name.startsWith("DCS - Main Panel") => "Sensor"
-      case _ => "Instrument"
-    }
     val insert: String =
       s"""
          match (n {id: "$id"}) with n remove n:Normal set n:$label,
@@ -67,7 +65,7 @@ object db {
 
   }
 
-  private def insetProcessInstruFunc(proc: ProcessInstruFunc)(implicit connection: Neo4jConnection): Boolean = {
+  def insetProcessInstruFunc(proc: ProcessInstruFunc)(implicit connection: Neo4jConnection): Boolean = {
     val name = proc.tagName
     val id = proc.id
     val insert: String =
@@ -127,10 +125,25 @@ object db {
                             limit 1""")
     equipment.apply().map(_[String]("name")).toList.headOption
   }
-
   def clean(implicit connection: Neo4jConnection) = {
     Cypher("""MATCH (n) DETACH DELETE n""").execute()
   }
-
 }
 
+class DexpiDb extends db {
+
+  def insertInstrument(instru: Instrument)(implicit connection: Neo4jConnection): Option[Boolean] = {
+    val label = "Sensor"
+    insertInstrumentWithLabel(instru, "Sensor")
+  }
+}
+
+class MimosaDb extends db {
+  def insertInstrument(instru: Instrument)(implicit connection: Neo4jConnection): Option[Boolean] = {
+    val label = instru.componentName match {
+      case name if name.startsWith("DCS - Main Panel") => "Sensor"
+      case _ => "Instrument"
+    }
+    insertInstrumentWithLabel(instru, "Sensor")
+  }
+}

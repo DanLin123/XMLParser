@@ -36,7 +36,7 @@ case class ConnectorSymbol(id: String, tagName: String, linkedTo: String, ToFrom
 
 case class Connection(fromId: String, toId: String)
 
-class Parser(implicit val connection: Neo4jConnection) {
+trait Parser{
   implicit def nodeToString(node: NodeSeq): String = node.text
 
   def equipments(node: Node): Seq[Equipment] = {
@@ -54,33 +54,14 @@ class Parser(implicit val connection: Neo4jConnection) {
   }
 
   // parse child equipment or nozzle under equipment
-  private def parseChild(node: Node): Component = {
+  def parseChild(node: Node): Component = {
     node.label match {
       case "Equipment" => SingleEquipment(node \ "@ID", node \ "@TagName", node \ "@ComponentClass")
       case "Nozzle" => Nozzle(node \ "@ID", node \ "@TagName", node \ "@ComponentClass")
     }
   }
 
-  def instruments(node: Node): Seq[Instrument] = {
-    // for DEXPI
-
-    val dexpoInstrumentsNode = node \ "InstrumentationLoopFunction"
-
-    val dexpoInstruments =  dexpoInstrumentsNode.map {ins =>
-      val associateId = ins \ "Association" \ "@ItemID"
-      val associatedNode = node \\ "ProcessInstrumentationFunction" filter ( func => (func \ "@ID") == associateId)
-      val proceInstruFunc = ProcessInstruFunc(associateId, associatedNode \ "@TagName")
-
-      Instrument(ins \ "@ID", ins \ "@TagName",  Some(proceInstruFunc), ins \ "@ComponentClass", ins \ "@ComponentName" )
-    }
-
-    // for MIMOSA
-    val mimosaSensors = (node \ "InstrumentComponent")
-      //.filter(n => n.attributes.exists(_.value.text.startsWith("DCS - Main Panel")))
-    val mimosaInstruments = mimosaSensors.map(ins => Instrument(ins \ "@ID", ins \ "@TagName", None,
-      ins \ "@ComponentClass", ins \ "@ComponentName" ))
-    dexpoInstruments ++ mimosaInstruments
-  }
+  def instruments(node: Node, fileType: String): Seq[Instrument]
 
   def pipingNetworkSegment(node: Node): Seq[PipingNetworkSegment] = {
     val segmentNode = node \\ "PipingNetworkSegment"
@@ -119,5 +100,22 @@ class Parser(implicit val connection: Neo4jConnection) {
   def ids(node: Node): Seq[String] = {
     (node \\ "@ID").map(_.text)
   }
+}
 
+class MimosaParser(implicit val connection: Neo4jConnection)  extends Parser {
+  def instruments(node: Node, fileType: String): Seq[Instrument] =
+    (node \ "InstrumentComponent").map { ins =>
+      Instrument(ins \ "@ID", ins \ "@TagName", None, ins \ "@ComponentClass", ins \ "@ComponentName")
+    }
+}
+
+class DexpiParser(implicit val connection: Neo4jConnection)  extends Parser {
+  def instruments(node: Node, fileType: String): Seq[Instrument] =
+    (node \ "InstrumentationLoopFunction").map { ins =>
+      val associateId = ins \ "Association" \ "@ItemID"
+      val associatedNode = node \\ "ProcessInstrumentationFunction" filter (func => (func \ "@ID") == associateId)
+      val proceInstruFunc = ProcessInstruFunc(associateId, associatedNode \ "@TagName")
+
+      Instrument(ins \ "@ID", ins \ "@TagName", Some(proceInstruFunc), ins \ "@ComponentClass", ins \ "@ComponentName")
+    }
 }
