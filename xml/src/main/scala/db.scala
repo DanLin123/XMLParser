@@ -144,6 +144,6 @@ class MimosaDb extends db {
       case name if name.startsWith("DCS - Main Panel") => "Sensor"
       case _ => "Instrument"
     }
-    insertInstrumentWithLabel(instru, "Sensor")
+    insertInstrumentWithLabel(instru, label)
   }
 }
